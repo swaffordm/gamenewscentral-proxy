@@ -1,16 +1,20 @@
 export default async function handler(req, res) {
-  const query = req.query.search?.toString().toLowerCase() || '';
-  if (!query) return res.status(400).json({ error: 'No search' });
+  const query = req.query.search?.toString().trim().toLowerCase() || '';
+  if (!query) return res.status(400).json({ error: 'No search query' });
 
   try {
     // Get full Steam app list
-    const listResp = await fetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
+    const listResp = await fetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/', {
+      headers: { 'Accept': 'application/json' }
+    });
     const listData = await listResp.json();
-    const apps = listData.applist.apps;
+    const apps = listData.applist.apps || [];
 
-    // Find matches
+    // Find matches (top 5)
     const matches = apps
-      .filter(app => app.name?.toLowerCase().includes(query))
+      .filter(app => 
+        app.name && app.name.toLowerCase().includes(query)
+      )
       .slice(0, 5);
 
     const results = [];
@@ -20,10 +24,13 @@ export default async function handler(req, res) {
           `https://store.steampowered.com/appreviews/${app.appid}?json=1&filter=all&language=all&day_range=9223372036854775807`
         );
         const reviewData = await reviewResp.json();
-        const q = reviewData.query_summary;
+        const q = reviewData.query_summary || {};
 
-        const percentage = q && q.total_reviews > 100
-          ? Number(((q.total_positive / q.total_reviews) * 100).toFixed(1))
+        const total = q.total_reviews || 0;
+        const positive = q.total_positive || 0;
+
+        const percentage = total >= 100
+          ? Number(((positive / total) * 100).toFixed(1))
           : null;
 
         results.push({
@@ -38,6 +45,7 @@ export default async function handler(req, res) {
 
     res.status(200).json(results);
   } catch (e) {
-    res.status(500).json({ error: 'Failed' });
+    console.error('Proxy failed:', e);
+    res.status(500).json({ error: 'Steam API failed' });
   }
 }
