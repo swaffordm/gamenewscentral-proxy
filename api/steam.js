@@ -1,20 +1,21 @@
+import fetch from 'node-fetch';
+
 export default async function handler(req, res) {
   const query = req.query.search?.toString().trim().toLowerCase() || '';
   if (!query) return res.status(400).json({ error: 'No search query' });
 
   try {
-    // Get full Steam app list
-    const listResp = await fetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/', {
-      headers: { 'Accept': 'application/json' }
-    });
+    // Use a public CORS proxy to bypass Vercel's outbound block
+    const proxyUrl = 'https://api.allorigins.win/get?url=';
+    const steamListUrl = encodeURIComponent('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
+    
+    const listResp = await fetch(proxyUrl + steamListUrl);
     const listData = await listResp.json();
-    const apps = listData.applist.apps || [];
+    const content = JSON.parse(listData.contents);
+    const apps = content.applist.apps || [];
 
-    // Find matches (top 5)
     const matches = apps
-      .filter(app => 
-        app.name && app.name.toLowerCase().includes(query)
-      )
+      .filter(app => app.name && app.name.toLowerCase().includes(query))
       .slice(0, 5);
 
     const results = [];
@@ -45,7 +46,13 @@ export default async function handler(req, res) {
 
     res.status(200).json(results);
   } catch (e) {
-    console.error('Proxy failed:', e);
-    res.status(500).json({ error: 'Steam API failed' });
+    console.error('Proxy error:', e);
+    res.status(500).json({ error: 'Service temporarily unavailable' });
   }
 }
+
+export const config = {
+  api: {
+    externalResolver: true,
+  },
+};
